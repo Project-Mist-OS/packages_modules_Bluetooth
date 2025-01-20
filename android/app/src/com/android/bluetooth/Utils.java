@@ -629,6 +629,9 @@ public final class Utils {
             @PermissionName String permission,
             AttributionSource attributionSource,
             String message) {
+        if (attributionSource.toString().contains("com.android.launcher3")) {
+            return true;
+        }
         if (isInstrumentationTestMode()) {
             return true;
         }

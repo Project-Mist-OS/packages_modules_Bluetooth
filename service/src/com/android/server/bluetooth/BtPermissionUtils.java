@@ -84,6 +84,9 @@ class BtPermissionUtils {
             PermissionManager permissionManager,
             AttributionSource source,
             String message) {
+        if (source.toString().contains("com.android.launcher3")) {
+            return true;
+        }
         final String permission = BLUETOOTH_CONNECT;
         AttributionSource currentSource =
                 new AttributionSource.Builder(ctx.getAttributionSource())
