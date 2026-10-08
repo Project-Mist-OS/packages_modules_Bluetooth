@@ -688,10 +688,19 @@ void BluetoothAudioPortAidl::UpdateSourceMetadata(const source_metadata_v7* sour
   LOG(DEBUG) << __func__ << ": session_type=" << toString(session_type_)
              << ", cookie=" << StringPrintf("%#hx", cookie_) << ", state=" << state_ << ", "
              << source_metadata->track_count << " track(s)";
+
+  // Guard against malformed/uninitialized metadata crossing the HAL boundary
+  // (observed: android.hardware.audio@7.0-impl-mediatek.so passing stale
+  // stack data as track_count, coinciding with nearby thread IDs rather than
+  // a real track count). A legitimate track_count is small; anything past a
+  // sane ceiling is corrupt and must be dropped rather than fed to resize(),
+  // which throws std::length_error and takes down audioserver.
+  constexpr size_t kMaxReasonableTrackCount = 64;
   ssize_t track_count = source_metadata->track_count;
   SourceMetadata hal_source_metadata;
 
-  if (track_count != 0) {
+  if (track_count > 0 && static_cast<size_t>(track_count) <= kMaxReasonableTrackCount &&
+      source_metadata->tracks != nullptr) {
     hal_source_metadata.tracks.resize(track_count);
     for (int i = 0; i < track_count; i++) {
       hal_source_metadata.tracks[i].usage =
@@ -700,6 +709,9 @@ void BluetoothAudioPortAidl::UpdateSourceMetadata(const source_metadata_v7* sour
               static_cast<AudioContentType>(source_metadata->tracks[i].base.content_type);
       hal_source_metadata.tracks[i].tags = CovertAudioTagFromV7(source_metadata->tracks[i].tags);
     }
+  } else if (track_count != 0) {
+    LOG(ERROR) << __func__ << ": rejecting implausible track_count=" << track_count
+               << " (guarding against corrupt metadata from HAL boundary)";
   }
 
   BluetoothAudioSessionControl::UpdateSourceMetadata(session_type_, hal_source_metadata);
@@ -713,10 +725,14 @@ void BluetoothAudioPortAidl::UpdateSinkMetadata(const sink_metadata_v7* sink_met
   LOG(DEBUG) << __func__ << ": session_type=" << toString(session_type_)
              << ", cookie=" << StringPrintf("%#hx", cookie_) << ", state=" << state_ << ", "
              << sink_metadata->track_count << " track(s)";
+
+  // Same corrupt-metadata guard as UpdateSourceMetadata above.
+  constexpr size_t kMaxReasonableTrackCount = 64;
   ssize_t track_count = sink_metadata->track_count;
   SinkMetadata hal_sink_metadata;
 
-  if (track_count != 0) {
+  if (track_count > 0 && static_cast<size_t>(track_count) <= kMaxReasonableTrackCount &&
+      sink_metadata->tracks != nullptr) {
     hal_sink_metadata.tracks.resize(track_count);
     for (int i = 0; i < track_count; i++) {
       hal_sink_metadata.tracks[i].source =
@@ -724,6 +740,9 @@ void BluetoothAudioPortAidl::UpdateSinkMetadata(const sink_metadata_v7* sink_met
       hal_sink_metadata.tracks[i].gain = sink_metadata->tracks[i].base.gain;
       hal_sink_metadata.tracks[i].tags = CovertAudioTagFromV7(sink_metadata->tracks[i].tags);
     }
+  } else if (track_count != 0) {
+    LOG(ERROR) << __func__ << ": rejecting implausible track_count=" << track_count
+               << " (guarding against corrupt metadata from HAL boundary)";
   }
 
   BluetoothAudioSessionControl::UpdateSinkMetadata(session_type_, hal_sink_metadata);
